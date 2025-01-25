@@ -1,0 +1,37 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: rdma-test-pod
+  annotations:
+    k8s.v1.cni.cncf.io/networks: |
+      [
+        {
+          "name": "macvlan-rdma",
+          "namespace": "nvidia-network-operator"
+        }
+      ]
+spec:
+  containers:
+  - name: rdma-test
+    image: mellanox/rping-test
+    securityContext:
+      capabilities:
+        add: ["IPC_LOCK"]
+      privileged: true
+    resources:
+      limits:
+        rdma/hca_shared_devices: 1
+        nvidia.com/gpu: 1
+      requests:
+        rdma/hca_shared_devices: 1
+        nvidia.com/gpu: 1
+    volumeMounts:
+    - name: hugepage
+      mountPath: /dev/hugepages
+    command: ["sleep", "infinity"]
+  volumes:
+  - name: hugepage
+    emptyDir:
+      medium: HugePages
+  nodeSelector:
+    feature.node.kubernetes.io/network-sriov.capable: "true" 

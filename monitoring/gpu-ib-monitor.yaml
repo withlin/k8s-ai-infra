@@ -1,0 +1,196 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: gpu-ib-monitor
+  namespace: monitoring
+  labels:
+    app: gpu-ib-monitor
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: gpu-ib-monitor
+  endpoints:
+  - port: metrics
+    interval: 15s
+    path: /metrics
+
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: gpu-ib-exporter
+  namespace: monitoring
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: gpu-ib-monitor
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: gpu-ib-monitor
+    spec:
+      containers:
+      - name: dcgm-exporter
+        image: nvcr.io/nvidia/k8s/dcgm-exporter:3.1.7-3.1.5-ubuntu20.04
+        ports:
+        - containerPort: 9400
+          name: metrics
+        securityContext:
+          runAsNonRoot: false
+          runAsUser: 0
+        volumeMounts:
+        - name: gpu-resources
+          mountPath: /usr/local/nvidia
+        - name: pod-gpu-resources
+          mountPath: /var/lib/kubelet/pod-resources
+          
+      - name: ib-exporter
+        image: mellanox/ib-exporter:latest
+        ports:
+        - containerPort: 9753
+          name: metrics
+        securityContext:
+          privileged: true
+        volumeMounts:
+        - name: sys
+          mountPath: /sys
+        - name: infiniband
+          mountPath: /sys/class/infiniband
+          
+      volumes:
+      - name: gpu-resources
+        hostPath:
+          path: /usr/local/nvidia
+      - name: pod-gpu-resources
+        hostPath:
+          path: /var/lib/kubelet/pod-resources
+      - name: sys
+        hostPath:
+          path: /sys
+      - name: infiniband
+        hostPath:
+          path: /sys/class/infiniband
+
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: gpu-ib-alerts
+  namespace: monitoring
+spec:
+  groups:
+  - name: gpu.rules
+    rules:
+    - alert: GPUHighTemperature
+      expr: DCGM_FI_DEV_GPU_TEMP > 85
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        description: "GPU {{ $labels.gpu }} temperature is high"
+        
+    - alert: GPUHighUtilization
+      expr: DCGM_FI_DEV_GPU_UTIL > 95
+      for: 15m
+      labels:
+        severity: warning
+      annotations:
+        description: "GPU {{ $labels.gpu }} utilization is high"
+        
+    - alert: GPUMemoryHighUtilization
+      expr: DCGM_FI_DEV_FB_USED / DCGM_FI_DEV_FB_FREE > 0.95
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        description: "GPU {{ $labels.gpu }} memory usage is high"
+        
+  - name: ib.rules
+    rules:
+    - alert: IBLinkDown
+      expr: ib_link_state == 0
+      for: 1m
+      labels:
+        severity: critical
+      annotations:
+        description: "IB link {{ $labels.port }} is down"
+        
+    - alert: IBHighErrorRate
+      expr: rate(ib_port_error_counter[5m]) > 100
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        description: "High error rate on IB port {{ $labels.port }}"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-gpu-ib
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "true"
+data:
+  gpu-ib-dashboard.json: |
+    {
+      "dashboard": {
+        "title": "GPU & IB Monitoring Dashboard",
+        "panels": [
+          {
+            "title": "GPU Utilization",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "DCGM_FI_DEV_GPU_UTIL",
+                "legendFormat": "GPU {{gpu}}"
+              }
+            ]
+          },
+          {
+            "title": "GPU Temperature",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "DCGM_FI_DEV_GPU_TEMP",
+                "legendFormat": "GPU {{gpu}}"
+              }
+            ]
+          },
+          {
+            "title": "GPU Memory Usage",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "DCGM_FI_DEV_FB_USED",
+                "legendFormat": "Used {{gpu}}"
+              }
+            ]
+          },
+          {
+            "title": "IB Bandwidth Usage",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "rate(ib_port_xmit_data_bytes[5m])",
+                "legendFormat": "Transmit Bandwidth {{port}}"
+              },
+              {
+                "expr": "rate(ib_port_rcv_data_bytes[5m])",
+                "legendFormat": "Receive Bandwidth {{port}}"
+              }
+            ]
+          },
+          {
+            "title": "IB Error Count",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "ib_port_error_counter",
+                "legendFormat": "{{type}} {{port}}"
+              }
+            ]
+          }
+        ]
+      }
+    } 

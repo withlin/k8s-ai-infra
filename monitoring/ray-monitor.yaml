@@ -1,0 +1,125 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: ray-monitor
+  namespace: monitoring
+  labels:
+    app: ray-monitor
+spec:
+  selector:
+    matchLabels:
+      ray.io/cluster: ray-cluster
+  endpoints:
+  - port: dashboard
+    interval: 15s
+    path: /metrics
+
+---
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: ray-alerts
+  namespace: monitoring
+spec:
+  groups:
+  - name: ray.rules
+    rules:
+    - alert: RayNodeDown
+      expr: ray_node_status == 0
+      for: 1m
+      labels:
+        severity: critical
+      annotations:
+        description: "Ray node {{ $labels.node_id }} is down"
+        
+    - alert: RayHighTaskPending
+      expr: ray_task_pending > 1000
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        description: "High number of pending tasks in Ray cluster"
+        
+    - alert: RayResourceExhaustion
+      expr: ray_resource_used / ray_resource_total > 0.95
+      for: 5m
+      labels:
+        severity: warning
+      annotations:
+        description: "Ray cluster resource usage is high"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: grafana-dashboard-ray
+  namespace: monitoring
+  labels:
+    grafana_dashboard: "true"
+data:
+  ray-dashboard.json: |
+    {
+      "dashboard": {
+        "title": "Ray Cluster Monitoring",
+        "panels": [
+          {
+            "title": "Node Status",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "ray_node_status",
+                "legendFormat": "Node {{node_id}}"
+              }
+            ]
+          },
+          {
+            "title": "Task Status",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "ray_task_pending",
+                "legendFormat": "Pending Tasks"
+              },
+              {
+                "expr": "ray_task_running",
+                "legendFormat": "Running Tasks"
+              }
+            ]
+          },
+          {
+            "title": "GPU Utilization",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "ray_gpu_utilization",
+                "legendFormat": "GPU {{gpu_id}}"
+              }
+            ]
+          },
+          {
+            "title": "Memory Usage",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "ray_memory_used",
+                "legendFormat": "Memory Used"
+              }
+            ]
+          },
+          {
+            "title": "Network Throughput",
+            "type": "graph",
+            "targets": [
+              {
+                "expr": "rate(ray_network_bytes_sent[5m])",
+                "legendFormat": "Network Out"
+              },
+              {
+                "expr": "rate(ray_network_bytes_received[5m])",
+                "legendFormat": "Network In"
+              }
+            ]
+          }
+        ]
+      }
+    } 

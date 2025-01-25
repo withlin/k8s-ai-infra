@@ -1,0 +1,97 @@
+apiVersion: mellanox.com/v1alpha1
+kind: NicClusterPolicy
+metadata:
+  name: nic-cluster-policy
+spec:
+  # Disable containerized MOFED deployment
+  ofedDriver:
+    deploy: false  # Do not deploy MOFED through operator
+  
+  # RDMA Device Plugin Configuration
+  rdmaSharedDevicePlugin:
+    image: nvcr.io/nvidia/k8s-rdma-shared-dev-plugin:v1.2.1
+    repository: nvcr.io/nvidia
+    version: v1.2.1
+    config: |
+      {
+        "resourceName": "rdma/hca_shared_devices",
+        "resourcePrefix": "nvidia.com",
+        "devices": ["mt4119_pciconf0"],
+        "vendors": ["15b3"],
+        "deviceIDs": ["1017"]
+      }
+
+  # SR-IOV Device Plugin Configuration
+  sriovDevicePlugin:
+    image: nvcr.io/nvidia/k8s-sriov-device-plugin:v3.3.1
+    repository: nvcr.io/nvidia
+    version: v3.3.1
+
+  # Secondary Network Configuration
+  secondaryNetwork:
+    cniPlugins:
+      image: nvcr.io/nvidia/mellanox/mofed:5.4-2.3.7.1
+      repository: nvcr.io/nvidia/mellanox
+      version: 5.4-2.3.7.1
+      defaultCniConfig: |
+        {
+          "cniVersion": "0.3.1",
+          "name": "macvlan-rdma",
+          "plugins": [
+            {
+              "type": "macvlan",
+              "master": "ib0",
+              "mode": "bridge",
+              "ipam": {
+                "type": "whereabouts",
+                "range": "192.168.100.0/24",
+                "exclude": [
+                  "192.168.100.1/32"
+                ],
+                "gateway": "192.168.100.1"
+              }
+            }
+          ]
+        }
+
+---
+# RDMA Shared Device Plugin Configuration
+apiVersion: mellanox.com/v1alpha1
+kind: RdmaSharedDevicePlugin
+metadata:
+  name: rdma-shared-dp-config
+spec:
+  resourceName: rdma/hca_shared_devices
+  resources:
+    - name: hca_shared_devices
+      vendors: ["15b3"]
+      devices: ["1017"]
+
+---
+# Whereabouts IP Pool Configuration
+apiVersion: whereabouts.cni.cncf.io/v1alpha1
+kind: IPPool
+metadata:
+  name: rdma-ippool
+  namespace: nvidia-network-operator
+spec:
+  range: "192.168.100.0/24"
+  exclude: 
+    - "192.168.100.1/32"
+  gateway: "192.168.100.1"
+
+---
+# SR-IOV Network Configuration
+apiVersion: sriovnetwork.openshift.io/v1
+kind: SriovNetworkNodePolicy
+metadata:
+  name: sriov-ib-network
+spec:
+  resourceName: mlnx_sriov_rdma
+  nodeSelector:
+    feature.node.kubernetes.io/network-sriov.capable: "true"
+  numVfs: 8
+  nicSelector:
+    vendor: "15b3"
+    deviceID: "1017"
+  deviceType: netdevice 

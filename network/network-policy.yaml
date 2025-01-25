@@ -1,0 +1,28 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: rdma-network-policy
+  namespace: default
+spec:
+  podSelector:
+    matchLabels:
+      app: rdma-workload
+  policyTypes:
+  - Ingress
+  - Egress
+  ingress:
+  - from:
+    - podSelector:
+        matchLabels:
+          app: rdma-workload
+    ports:
+    - port: 4791  # RDMA CM
+    - port: 4789  # VXLAN
+  egress:
+  - to:
+    - podSelector:
+        matchLabels:
+          app: rdma-workload
+    ports:
+    - port: 4791  # RDMA CM
+    - port: 4789  # VXLAN 

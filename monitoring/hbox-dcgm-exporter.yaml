@@ -1,0 +1,69 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: hbox-dcgm-exporter
+  namespace: monitoring
+  labels:
+    app: hbox-dcgm-exporter
+spec:
+  selector:
+    matchLabels:
+      app: hbox-dcgm-exporter
+  template:
+    metadata:
+      labels:
+        app: hbox-dcgm-exporter
+    spec:
+      containers:
+      - name: hbox-dcgm-exporter
+        image: hbox-dcgm-exporter:latest
+        ports:
+        - containerPort: 9400
+          name: metrics
+        env:
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: spec.nodeName
+        - name: PRISM_ENDPOINT
+          value: "http://prism-service:8080"
+        volumeMounts:
+        - name: pod-gpu-resources
+          mountPath: /var/lib/kubelet/pod-resources
+        - name: docker-sock
+          mountPath: /var/run/docker.sock
+      volumes:
+      - name: pod-gpu-resources
+        hostPath:
+          path: /var/lib/kubelet/pod-resources
+      - name: docker-sock
+        hostPath:
+          path: /var/run/docker.sock
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: hbox-dcgm-exporter
+  namespace: monitoring
+spec:
+  selector:
+    app: hbox-dcgm-exporter
+  ports:
+  - port: 9400
+    targetPort: 9400
+    name: metrics
+
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: hbox-dcgm-monitor
+  namespace: monitoring
+spec:
+  selector:
+    matchLabels:
+      app: hbox-dcgm-exporter
+  endpoints:
+  - port: metrics
+    interval: 15s 

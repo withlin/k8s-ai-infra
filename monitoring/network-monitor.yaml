@@ -1,0 +1,45 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: network-operator-metrics
+  namespace: nvidia-network-operator
+  labels:
+    app: nvidia-network-operator
+spec:
+  endpoints:
+  - port: metrics
+    interval: 15s
+  selector:
+    matchLabels:
+      app: nvidia-network-operator
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: network-grafana-dashboard
+  namespace: monitoring
+data:
+  network-dashboard.json: |
+    {
+      "dashboard": {
+        "title": "NVIDIA Network Operator Dashboard",
+        "panels": [
+          {
+            "title": "RDMA Resource Usage",
+            "type": "graph",
+            "datasource": "prometheus"
+          },
+          {
+            "title": "Network Throughput",
+            "type": "graph",
+            "datasource": "prometheus"
+          },
+          {
+            "title": "Network Latency",
+            "type": "graph",
+            "datasource": "prometheus"
+          }
+        ]
+      }
+    } 

@@ -1,0 +1,40 @@
+operator:
+  repository: nvcr.io/nvidia/network-operator
+  image: network-operator
+  version: v1.4.0
+
+sriovNetworkOperator:
+  enabled: true
+  repository: nvcr.io/nvidia
+  image: sriov-network-operator
+  version: v1.2.0
+
+sriovDevicePlugin:
+  enabled: true
+  repository: nvcr.io/nvidia
+  image: k8s-sriov-device-plugin
+  version: v3.5.0
+
+rdmaSharedDevicePlugin:
+  enabled: true
+  repository: nvcr.io/nvidia
+  image: k8s-rdma-shared-dev-plugin
+  version: v1.3.0
+
+secondaryNetwork:
+  enabled: true
+  multus:
+    repository: nvcr.io/nvidia
+    image: multus-cni
+    version: v3.9.0
+  cniPlugins:
+    repository: nvcr.io/nvidia/mellanox
+    image: mofed
+    version: 5.4-2.3.7.1
+
+ofedDriver:
+  repository: nvcr.io/nvidia/mellanox
+  image: mofed
+  version: 5.4-2.3.7.1
+  
+upgradePolicy: Never 
